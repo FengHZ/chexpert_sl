@@ -10,6 +10,14 @@
           <option name="port" value="22" />
         </fileTransfer>
       </webServer>
+      <webServer id="9b5bb77b-f683-4eb2-a933-9ae5414966ae" name="nesa" url="http://10.214.143.58">
+        <fileTransfer host="10.214.143.58" port="22" rootFolder="/home/nesa320/feng/chexpert_sl" accessType="SFTP">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
     </option>
   </component>
 </project>
