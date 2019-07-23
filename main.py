@@ -31,7 +31,7 @@ parser.add_argument('-b', '--batch-size', default=32, type=int,
 # Train Strategy Parameters
 parser.add_argument('-t', '--train-time', default=1, type=int,
                     metavar='N', help='the x-th time of training')
-parser.add_argument('--epochs', default=20, type=int, metavar='N',
+parser.add_argument('--epochs', default=45, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
@@ -59,7 +59,7 @@ parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('-m', '--momentum', default=0.9, type=float, metavar='M', help='Momentum in SGD')
 parser.add_argument('--nesterov', action='store_true', help='nesterov in sgd')
-parser.add_argument('-ad', "--adjust-lr", default=[10], type=arg_as_list,
+parser.add_argument('-ad', "--adjust-lr", default=[15,30], type=arg_as_list,
                     help="The milestone list for adjust learning rate")
 parser.add_argument('--lr-decay-ratio', default=0.1, type=float)
 parser.add_argument('--wd', '--weight-decay', default=0, type=float)
