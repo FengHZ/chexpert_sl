@@ -1,4 +1,3 @@
-import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -97,12 +96,11 @@ class _DenseBlock2D(nn.Module):
 
 class MultiLabelDenseNet(nn.Module):
 
-    def __init__(self, num_input_channels=1, growth_rate=32, block_config=(6, 12, 24, 16), img_size=(320, 384),
+    def __init__(self, num_input_channels=1, growth_rate=32, block_config=(6, 12, 24, 16),
                  compression=0.5, num_init_features=16, bn_size=4, drop_rate=float(0), efficient=False,
                  class_config=(2, 2, 2, 2, 2), data_parallel=True, small_input=False):
         super(MultiLabelDenseNet, self).__init__()
         assert 0 < compression <= 1, 'compression of densenet should be between 0 and 1'
-        self._img_size = list(img_size)
         # First convolution
         self.encoder = nn.Sequential()
         self.classify = nn.Sequential()
@@ -135,17 +133,13 @@ class MultiLabelDenseNet(nn.Module):
                 self.encoder.add_module('transition%d' % (i + 1), trans)
                 num_features = int(num_features * compression)
             else:
-                # we may use norm before the global avg. Standard implementation doesn't use
-                # trans = nn.BatchNorm2d(num_features)
                 trans = nn.Sequential()
+                trans.add_module("norm", nn.BatchNorm2d(num_features))
+                trans.add_module("relu", nn.ReLU(num_features))
                 if data_parallel:
                     trans = nn.DataParallel(trans)
                 self.encoder.add_module('transition%d' % (i + 1), trans)
-        if small_input:
-            self._img_size = [int(s / 2 ** (len(block_config) - 1)) for s in self._img_size]
-        else:
-            self._img_size = [int(s / 2 ** (len(block_config) + 1)) for s in self._img_size]
-        global_avg = nn.AvgPool2d(kernel_size=tuple(self._img_size), stride=1, padding=0)
+        global_avg = nn.AdaptiveAvgPool2d(output_size=(1, 1))
         if data_parallel:
             global_avg = nn.DataParallel(global_avg)
         self.global_avg = global_avg
@@ -172,7 +166,7 @@ class MultiLabelDenseNet(nn.Module):
         feature = self.encoder(input_img)
         gap_feature = self.global_avg(feature).view(batch_size, -1)
         prediction_list = []
-        for i, class_cfg in enumerate(self.class_config):
+        for i, class_cfg in enumerate(self._class_config):
             output = getattr(self.classify, 'classify%d' % (i + 1))(gap_feature)
             prediction_list.append(output)
         return prediction_list
@@ -183,7 +177,7 @@ class MultiLabelDenseNet(nn.Module):
         feature.retain_grad()
         gap_feature = self.global_avg(feature).view(batch_size, -1)
         prediction_list = []
-        for i, class_cfg in enumerate(self.class_config):
+        for i, class_cfg in enumerate(self._class_config):
             output = getattr(self.classify, 'classify%d' % (i + 1))(gap_feature)
             prediction_list.append(output)
         return prediction_list, feature
@@ -200,8 +194,8 @@ densenet_dict = {
 }
 
 
-def get_multi_label_densenet(name, img_size, drop_rate, data_parallel, class_config):
+def get_multi_label_densenet(name, drop_rate, data_parallel, class_config):
     return MultiLabelDenseNet(growth_rate=densenet_dict[name]["growth_rate"],
                               block_config=densenet_dict[name]["block_config"],
-                              num_init_features=densenet_dict[name]["num_init_features"], img_size=img_size,
+                              num_init_features=densenet_dict[name]["num_init_features"],
                               drop_rate=drop_rate, data_parallel=data_parallel, class_config=class_config)

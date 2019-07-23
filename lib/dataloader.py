@@ -95,6 +95,7 @@ def chexpert_dataset(dataset_base_path, image_size=(320, 384), augment_prob=0.5,
         csv_path = path.join(dataset_base_path, "CheXpert-v1.0-small", "train.csv")
     else:
         transform = transforms.Compose([
+            transforms.Resize(image_size),
             transforms.ToTensor()
         ])
         csv_path = path.join(dataset_base_path, "CheXpert-v1.0-small", "valid.csv")

@@ -31,7 +31,7 @@ parser.add_argument('-b', '--batch-size', default=32, type=int,
 # Train Strategy Parameters
 parser.add_argument('-t', '--train-time', default=1, type=int,
                     metavar='N', help='the x-th time of training')
-parser.add_argument('--epochs', default=30, type=int, metavar='N',
+parser.add_argument('--epochs', default=20, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
@@ -54,16 +54,16 @@ parser.add_argument('--net-name', default="densenet121", type=str, help="the nam
 # parser.add_argument('--width', default=2, type=int, metavar='W', help="the width of neural network")
 parser.add_argument('--dr', '--drop-rate', default=0, type=float, help='dropout rate')
 # Optimizer Parameters
-parser.add_argument('--optimizer', default="SGD", type=str, metavar="Optimizer Name")
-parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
+parser.add_argument('--optimizer', default="Adam", type=str, metavar="Optimizer Name")
+parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('-m', '--momentum', default=0.9, type=float, metavar='M', help='Momentum in SGD')
 parser.add_argument('--nesterov', action='store_true', help='nesterov in sgd')
-parser.add_argument('-ad', "--adjust-lr", default=[10, 20, 25], type=arg_as_list,
+parser.add_argument('-ad', "--adjust-lr", default=[10], type=arg_as_list,
                     help="The milestone list for adjust learning rate")
-parser.add_argument('--lr-decay-ratio', default=0.2, type=float)
-parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
-parser.add_argument('--wul', '--warm-up-lr', default=0.02, type=float, help='the learning rate for warm up method')
+parser.add_argument('--lr-decay-ratio', default=0.1, type=float)
+parser.add_argument('--wd', '--weight-decay', default=0, type=float)
+# parser.add_argument('--wul', '--warm-up-lr', default=0.02, type=float, help='the learning rate for warm up method')
 # GPU Parameters
 parser.add_argument("--gpu", default="0,1", type=str, metavar='GPU plans to use', help='The GPU id plans to use')
 
@@ -91,18 +91,19 @@ def main(args=args):
     else:
         raise NotImplementedError("Dataset {} Not Implemented".format(args.dataset))
     if "densenet" in args.net_name:
-        model = get_multi_label_densenet(args.net_name, img_size=args.image_size, drop_rate=args.dr,
-                                         data_parallel=args.dp, class_config=class_config)
+        model = get_multi_label_densenet(args.net_name, drop_rate=args.dr, data_parallel=args.dp,
+                                         class_config=class_config)
     else:
         raise NotImplementedError("model {} not implemented".format(args.net_name))
     model = model.cuda()
 
-    input("Begin the {} time's training, Dataset:{}".format(args.train_time, args.dataset, args.mixup,
-                                                            args.manifold_mixup))
+    input("Begin the {} time's training, Dataset:{}".format(args.train_time, args.dataset))
     criterion = ClsCriterion()
     if args.optimizer == "SGD":
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.wd,
                                     nesterov=args.nesterov)
+    elif args.optimizer == "Adam":
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(args.momentum, 0.99), weight_decay=args.wd)
     else:
         raise NotImplementedError("{} not find".format(args.optimizer))
     scheduler = MultiStepLR(optimizer, milestones=args.adjust_lr, gamma=args.lr_decay_ratio)
@@ -130,9 +131,9 @@ def main(args=args):
 
     for epoch in range(args.start_epoch, args.epochs):
         scheduler.step(epoch)
-        if epoch == 0:
-            # do warmup
-            modify_lr_rate(opt=optimizer, lr=args.wul)
+        # if epoch == 0:
+        #     # do warmup
+        #     modify_lr_rate(opt=optimizer, lr=args.wul)
         train(train_dloader, model=model, criterion=criterion, optimizer=optimizer, epoch=epoch, writer=writer)
         valid(valid_dloader, model=model, criterion=criterion, epoch=epoch, writer=writer)
         save_checkpoint({
@@ -141,8 +142,8 @@ def main(args=args):
             "state_dict": model.state_dict(),
             'optimizer': optimizer.state_dict(),
         })
-        if epoch == 0:
-            modify_lr_rate(opt=optimizer, lr=args.lr)
+        # if epoch == 0:
+        #     modify_lr_rate(opt=optimizer, lr=args.lr)
 
 
 def train(train_dloader, model, criterion, optimizer, epoch, writer):

@@ -30,9 +30,9 @@ class ClsCriterion(nn.Module):
             if label.is_cuda:
                 mask_label = mask_label.cuda()
             mask_label.scatter_(1, label[:, idx].view(-1, 1), 1)
-            cls_loss = -1 * torch.sum(torch.sum(item * mask_label, dim=1) * label_weight[:, idx])
+            cls_loss = -1 * torch.mean(torch.sum(item * mask_label, dim=1) * label_weight[:, idx])
             loss[idx] = cls_loss
-        loss = torch.sum(loss * self.class_weight)
+        loss = torch.mean(loss * self.class_weight)
         return loss
 
 
