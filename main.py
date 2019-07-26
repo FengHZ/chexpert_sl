@@ -9,6 +9,10 @@ import shutil
 import ast
 from sklearn.metrics import roc_auc_score
 from lib.criterion import ClsCriterion
+from collections import defaultdict
+import re
+import numpy as np
+from lib.utils.utils import get_score_label_array_from_dict
 
 
 def arg_as_list(s):
@@ -22,7 +26,7 @@ parser = argparse.ArgumentParser(description='CheXpert Classifier')
 # Dataset Parameters
 parser.add_argument('-bp', '--base_path', default="/data/fhz")
 parser.add_argument('--dataset', default="CheXpert", type=str, help="The dataset name")
-parser.add_argument('-is', "--image-size", default=[320, 384], type=arg_as_list,
+parser.add_argument('-is', "--image-size", default=[320, 320], type=arg_as_list,
                     metavar='Image Size List', help='the size of h * w for image')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
@@ -59,7 +63,7 @@ parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('-m', '--momentum', default=0.9, type=float, metavar='M', help='Momentum in SGD')
 parser.add_argument('--nesterov', action='store_true', help='nesterov in sgd')
-parser.add_argument('-ad', "--adjust-lr", default=[15,30], type=arg_as_list,
+parser.add_argument('-ad', "--adjust-lr", default=[20, 40], type=arg_as_list,
                     help="The milestone list for adjust learning rate")
 parser.add_argument('--lr-decay-ratio', default=0.1, type=float)
 parser.add_argument('--wd', '--weight-decay', default=0, type=float)
@@ -180,21 +184,24 @@ def train(train_dloader, model, criterion, optimizer, epoch, writer):
 
 
 def valid(valid_dloader, model, criterion, epoch, writer):
+    """
+    Here valid dataloader we may need to organize it with each study
+    """
     model.eval()
     # calculate score and label for different dataset
-    atelectasis_score = []
-    atelectasis_label = []
-    cardiomegaly_score = []
-    cardiomegaly_label = []
-    consolidation_score = []
-    consolidation_label = []
-    edema_score = []
-    edema_label = []
-    pleural_effusion_score = []
-    pleural_effusion_label = []
+    atelectasis_score_dict = defaultdict(list)
+    atelectasis_label_dict = defaultdict(list)
+    cardiomegaly_score_dict = defaultdict(list)
+    cardiomegaly_label_dict = defaultdict(list)
+    consolidation_score_dict = defaultdict(list)
+    consolidation_label_dict = defaultdict(list)
+    edema_score_dict = defaultdict(list)
+    edema_label_dict = defaultdict(list)
+    pleural_effusion_score_dict = defaultdict(list)
+    pleural_effusion_label_dict = defaultdict(list)
     # calculate index for valid dataset
     losses = AverageMeter()
-    for i, (image, index, image_name, label_weight, label) in enumerate(valid_dloader):
+    for idx, (image, index, image_name, label_weight, label) in enumerate(valid_dloader):
         image = image.float().cuda()
         label = label.long().cuda()
         label_weight = label_weight.cuda()
@@ -202,36 +209,39 @@ def valid(valid_dloader, model, criterion, epoch, writer):
             prediction_list = model(image)
             loss = criterion(prediction_list, label_weight, label)
             losses.update(float(loss.item()), image.size(0))
-        for idx, item in enumerate(prediction_list):
-            score = item[:, 1]
-            item_label = label[:, idx]
-            if idx == 0:
-                atelectasis_label.append(item_label)
-                atelectasis_score.append(score)
-            elif idx == 1:
-                cardiomegaly_label.append(item_label)
-                cardiomegaly_score.append(score)
-            elif idx == 2:
-                consolidation_label.append(item_label)
-                consolidation_score.append(score)
-            elif idx == 3:
-                edema_label.append(item_label)
-                edema_score.append(score)
-            else:
-                pleural_effusion_label.append(item_label)
-                pleural_effusion_score.append(score)
+        for i, img_name in enumerate(image_name):
+            study_name = re.match(r"(.*)patient(.*)\|(.*)", img_name).group(2)
+            for j, prediction in enumerate(prediction_list):
+                score = prediction[i, 1].item()
+                item_label = label[i, j].item()
+                if j == 0:
+                    atelectasis_label_dict[study_name].append(item_label)
+                    atelectasis_score_dict[study_name].append(score)
+                elif j == 1:
+                    cardiomegaly_label_dict[study_name].append(item_label)
+                    cardiomegaly_score_dict[study_name].append(score)
+                elif j == 2:
+                    consolidation_label_dict[study_name].append(item_label)
+                    consolidation_score_dict[study_name].append(score)
+                elif j == 3:
+                    edema_label_dict[study_name].append(item_label)
+                    edema_score_dict[study_name].append(score)
+                else:
+                    pleural_effusion_label_dict[study_name].append(item_label)
+                    pleural_effusion_score_dict[study_name].append(score)
     writer.add_scalar(tag="Valid/cls_loss", scalar_value=losses.avg, global_step=epoch + 1)
     # Calculate AUC ROC
-    atelectasis_score = torch.cat(atelectasis_score, dim=0).detach().cpu().numpy()
-    atelectasis_label = torch.cat(atelectasis_label, dim=0).detach().cpu().numpy()
-    cardiomegaly_score = torch.cat(cardiomegaly_score, dim=0).detach().cpu().numpy()
-    cardiomegaly_label = torch.cat(cardiomegaly_label, dim=0).detach().cpu().numpy()
-    consolidation_score = torch.cat(consolidation_score, dim=0).detach().cpu().numpy()
-    consolidation_label = torch.cat(consolidation_label, dim=0).detach().cpu().numpy()
-    edema_score = torch.cat(edema_score, dim=0).detach().cpu().numpy()
-    edema_label = torch.cat(edema_label, dim=0).detach().cpu().numpy()
-    pleural_effusion_score = torch.cat(pleural_effusion_score, dim=0).detach().cpu().numpy()
-    pleural_effusion_label = torch.cat(pleural_effusion_label, dim=0).detach().cpu().numpy()
+    # Here we use the max method to get the score and label list of each study
+    atelectasis_score, atelectasis_label = get_score_label_array_from_dict(atelectasis_score_dict,
+                                                                           atelectasis_label_dict)
+    cardiomegaly_score, cardiomegaly_label = get_score_label_array_from_dict(cardiomegaly_score_dict,
+                                                                             cardiomegaly_label_dict)
+
+    consolidation_score, consolidation_label = get_score_label_array_from_dict(consolidation_score_dict,
+                                                                               consolidation_label_dict)
+    edema_score, edema_label = get_score_label_array_from_dict(edema_score_dict, edema_label_dict)
+    pleural_effusion_score, pleural_effusion_label = get_score_label_array_from_dict(pleural_effusion_score_dict,
+                                                                                     pleural_effusion_label_dict)
     atelectasis_auc = roc_auc_score(atelectasis_label, atelectasis_score)
     cardiomegaly_auc = roc_auc_score(cardiomegaly_label, cardiomegaly_score)
     consolidation_auc = roc_auc_score(consolidation_label, consolidation_score)
