@@ -103,6 +103,7 @@ def chexpert_dataset(dataset_base_path, image_size=(320, 320), augment_prob=0.5,
 
 def get_chexpert_ssl_sampler(labels, weights, annotated_ratio):
     sampler_train_l = []
+    sampler_train_u = set(range(labels.size(0)))
     for i in range(5):
         specified_labels = labels[:, i]
         specified_weights = weights[:, i]
@@ -117,9 +118,13 @@ def get_chexpert_ssl_sampler(labels, weights, annotated_ratio):
         loc = loc[torch.randperm(loc.size(0))]
         sampler_train_l.extend(loc[:annotated_num].tolist())
     # drop the repeat label
-    sampler_train_l = list(set(sampler_train_l))
+    sampler_train_l = set(sampler_train_l)
+    sampler_train_u = sampler_train_u-sampler_train_l
+    sampler_train_l = list(sampler_train_l)
+    sampler_train_u = list(sampler_train_u)
     sampler_train_l = SubsetRandomSampler(sampler_train_l)
-    return sampler_train_l
+    sampler_train_u = SubsetRandomSampler(sampler_train_u)
+    return sampler_train_l,sampler_train_u
 
 
 def generate_label_weight(annotation_frame, data_name_list, label_map):
